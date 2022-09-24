@@ -25,6 +25,12 @@ class MultiTracker:
         return tr
 
     @property
+    def track_map(self):
+        tmap = {cam_idx : {track.track_id : track.world_id for track in self.trackers[cam_idx].tracks}
+                for cam_idx in range(self.n_cams)}
+        return tmap
+
+    @property
     def next_id(self):
         self._id += 1
         return self._id
@@ -61,7 +67,7 @@ class MultiTracker:
                     elif not track_target.world_id:
                         track_target.world_id = track_query.world_id
                     
-                    if track_query.world_id and (track_query.world_id != track_target.world_id):
+                    if  (track_query.world_id != track_target.world_id) or not track_query.world_id:
                         world_id = self.next_id
                         track_query.world_id = world_id
                         track_target.world_id = world_id
@@ -73,6 +79,7 @@ class MultiTracker:
                 for id_target in unmatched_tracks_target:
                     track_target = self.trackers[j].tracks[id_target]
                     track_target.world_id = self.next_id
+        print(self.track_map)
 
     def _match(self, tracker_query, tracker_target):
 
@@ -85,7 +92,7 @@ class MultiTracker:
 
         matches, unmatched_tracks_query, unmatched_tracks_target = \
                 linear_assignment.min_cost_matching(
-                    nn_matching.nn_cost, self.max_cosine_distance, tracker_query.tracks,
+                    nn_matching.nn_cosine_cost, self.max_cosine_distance, tracker_query.tracks,
                     tracker_target.tracks, confirmed_tracks_query, confirmed_tracks_target)
 
         return matches, unmatched_tracks_query, unmatched_tracks_target

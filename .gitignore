@@ -87,3 +87,9 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# dataset
+MOT16/
+
+# models and detections
+resources/
