@@ -96,6 +96,24 @@ def _nn_cosine_distance(x, y):
     return distances.min(axis=0)
 
 
+def nn_cosine_cost(tracks_query, tracks_target, query_indices=None, target_indices=None):
+    if query_indices is None:
+        query_indices = np.arange(len(tracks_query))
+    if target_indices is None:
+        target_indices = np.arange(len(tracks_target))
+
+    cost_matrix = np.zeros((len(query_indices), len(target_indices)))
+    for i, query_idx in enumerate(query_indices):
+        for j, target_idx in enumerate(target_indices):
+            features_query = np.array(tracks_query[query_idx].features)
+            features_target = np.array(tracks_target[target_idx].features)
+            if len(features_query) and len(features_target):
+                cost_matrix[i, j] = np.min(_nn_cosine_distance(features_query, features_target))
+            else:
+                cost_matrix[i, j] = 1.0 # max value for cosine distance
+    return cost_matrix
+
+
 class NearestNeighborDistanceMetric(object):
     """
     A nearest neighbor distance metric that, for each target, returns
