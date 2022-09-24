@@ -39,14 +39,14 @@ class MultiTracker:
         """
         for i, tracker in enumerate(self.trackers):
             tracker.update(detections[i])
-            
+
         self._update_track_ids()
 
     def _update_track_ids(self):
         if self.n_cams == 1:
             tracker = self.trackers[0]
             for track in tracker.tracks:
-                if track.world_id is None:
+                if not track.world_id:
                     track.world_id = self.next_id
 
         for i in range(self.n_cams):
@@ -56,12 +56,12 @@ class MultiTracker:
                     track_query = self.trackers[i].tracks[id_query]
                     track_target = self.trackers[j].tracks[id_target]
 
-                    if track_query.world_id is None:
+                    if not track_query.world_id:
                         track_query.world_id = track_target.world_id
-                    elif track_target.world_id is None:
+                    elif not track_target.world_id:
                         track_target.world_id = track_query.world_id
                     
-                    if (track_query.world_id != track_target.world_id) or track_query.world_id is None:
+                    if track_query.world_id and (track_query.world_id != track_target.world_id):
                         world_id = self.next_id
                         track_query.world_id = world_id
                         track_target.world_id = world_id
