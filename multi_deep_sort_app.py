@@ -17,6 +17,7 @@ def gather_multi_sequence_info(sequence_dirs, detection_files):
 def dummy_run(sequence_dirs, detection_files, min_confidence,
         nms_max_overlap, min_detection_height, max_cosine_distance,
         nn_budget):
+    assert len(sequence_dirs) == len(detection_files)
     n_cams = len(sequence_dirs)
     metric = nn_matching.NearestNeighborDistanceMetric(
         "cosine", max_cosine_distance, nn_budget)
@@ -42,6 +43,92 @@ def dummy_run(sequence_dirs, detection_files, min_confidence,
         multi_tracker.predict()
         multi_tracker.update(detections)
         frame_idx += 1
+
+
+def run(sequence_dirs, detection_files, output_file, min_confidence,
+        nms_max_overlap, min_detection_height, max_cosine_distance,
+        nn_budget, display):
+    """Run multi-target tracker on a particular sequence.
+
+    Parameters
+    ----------
+    sequence_dir : str
+        Path to the MOTChallenge sequence directory.
+    detection_file : str
+        Path to the detections file.
+    output_file : str
+        Path to the tracking output file. This file will contain the tracking
+        results on completion.
+    min_confidence : float
+        Detection confidence threshold. Disregard all detections that have
+        a confidence lower than this value.
+    nms_max_overlap: float
+        Maximum detection overlap (non-maxima suppression threshold).
+    min_detection_height : int
+        Detection height threshold. Disregard all detections that have
+        a height lower than this value.
+    max_cosine_distance : float
+        Gating threshold for cosine distance metric (object appearance).
+    nn_budget : Optional[int]
+        Maximum size of the appearance descriptor gallery. If None, no budget
+        is enforced.
+    display : bool
+        If True, show visualization of intermediate tracking results.
+
+    """
+    assert len(sequence_dirs) == len(detection_files)
+    n_cams = len(sequence_dirs)
+    metric = nn_matching.NearestNeighborDistanceMetric(
+        "cosine", max_cosine_distance, nn_budget)
+    multi_tracker = MultiTracker(metric, n_cams=n_cams)
+    seqs_info = gather_multi_sequence_info(sequence_dirs, detection_files)
+    results = n_cams * [[]]
+    
+    def frame_callback(vis, frame_idx):
+        print("Processing frame %05d" % frame_idx)
+
+        # Load image and generate detections.
+        detections = []
+        for seq_info in seqs_info:
+            dets_seq =  create_detections(seq_info["detections"], frame_idx, min_detection_height)
+            dets_seq = [d for d in dets_seq if d.confidence >= min_confidence]
+
+            # Run non-maxima suppression.
+            boxes = np.array([d.tlwh for d in dets_seq])
+            scores = np.array([d.confidence for d in dets_seq])
+            indices = preprocessing.non_max_suppression(
+                boxes, nms_max_overlap, scores)
+            dets_seq = [dets_seq[i] for i in indices]
+            detections.append(dets_seq)
+
+        # Update tracker.
+        multi_tracker.predict()
+        multi_tracker.update(detections)    
+
+        # Update visualization.
+        if display:
+            images = [cv2.imread(seq_info["image_filenames"][frame_idx], cv2.IMREAD_COLOR)
+                     for seq_info in seqs_info]
+            vis.set_image(images)
+            vis.draw_detections(detections)
+            vis.draw_trackers(multi_tracker.tracks)
+
+        # Store results.
+        for cam_idx in range(n_cams):
+            for track in multi_tracker.tracks[cam_idx]:
+                if not track.is_confirmed() or track.time_since_update > 1:
+                    continue
+                bbox = track.to_tlwh()
+                results[cam_idx].append([
+                    frame_idx, track.world_id, bbox[0], bbox[1], bbox[2], bbox[3]])
+
+    # Run tracker.
+    if display:
+        visualizer = visualization.MultiVisualization(seqs_info, update_ms=5)
+    else:
+        visualizer = visualization.NoMultiVisualization(seqs_info)
+    visualizer.run(frame_callback)
+    
 
 
 if __name__ == '__main__':

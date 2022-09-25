@@ -21,7 +21,7 @@ class MultiTracker:
     def tracks(self):
         tr = []
         for tracker in self.trackers:
-            tr += [track for track in tracker.tracks if track.world_id is not None]
+            tr.append([track for track in tracker.tracks if track.world_id])
         return tr
 
     @property

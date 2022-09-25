@@ -1,7 +1,7 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
 import colorsys
-from .image_viewer import ImageViewer
+from .image_viewer import ImageViewer, MultiImageViewer
 
 
 def create_unique_color_float(tag, hue_step=0.41):
@@ -81,6 +81,34 @@ class NoVisualization(object):
             self.frame_idx += 1
 
 
+class NoMultiVisualization(object):
+    """
+    A dummy multi-visualization object that loops through all frames in a given
+    sequence to update the tracker without performing any visualization.
+    """
+
+    def __init__(self, seqs_info):
+        self.frame_idx = min(seq_info["min_frame_idx"] for seq_info in seqs_info)
+        self.last_idx = max(seq_info["max_frame_idx"] for seq_info in seqs_info)
+
+    def set_image(self, image):
+        pass
+
+    def draw_groundtruth(self, track_ids, boxes):
+        pass
+
+    def draw_detections(self, detections):
+        pass
+
+    def draw_trackers(self, trackers):
+        pass
+
+    def run(self, frame_callback):
+        while self.frame_idx <= self.last_idx:
+            frame_callback(self, self.frame_idx)
+            self.frame_idx += 1
+
+
 class Visualization(object):
     """
     This class shows tracking output in an OpenCV image viewer.
@@ -131,4 +159,57 @@ class Visualization(object):
                 *track.to_tlwh().astype(np.int), label=str(track.track_id))
             # self.viewer.gaussian(track.mean[:2], track.covariance[:2, :2],
             #                      label="%d" % track.track_id)
-#
+
+
+class MultiVisualization(object):
+    """
+    This class shows multi-tracking output in an OpenCV image viewer.
+    """
+    
+    def __init__(self, seqs_info, update_ms):
+        n_cams = len(seqs_info)
+        image_shapes = [seq_info["image_size"][::-1] for seq_info in seqs_info]
+        aspect_ratios = [float(image_shape[1]) / image_shape[0] for image_shape in image_shapes]
+        image_shape = self.n_cams * 512, max(int(aspect_ratio * 512) for aspect_ratio in aspect_ratios)
+        self.viewer = MultiImageViewer(update_ms=update_ms, 
+                                       image_shape=image_shape, 
+                                       n_cams=n_cams)
+
+        self.frame_idx = min(seq_info["min_frame_idx"] for seq_info in seqs_info)
+        self.last_idx = max(seq_info["max_frame_idx"] for seq_info in seqs_info)
+    
+    def run(self, frame_callback):
+        self.viewer.run(lambda: self._update_fun(frame_callback))
+
+    def _update_fun(self, frame_callback):
+        if self.frame_idx > self.last_idx:
+            return False  # Terminate
+        frame_callback(self, self.frame_idx)
+        self.frame_idx += 1
+        return True
+
+    def set_image(self, image):
+        self.viewer.image = image
+
+    def draw_groundtruth(self, track_ids, boxes):
+        self.viewer.thickness = 2
+        for track_id, box in zip(track_ids, boxes):
+            self.viewer.color = create_unique_color_uchar(track_id)
+            self.viewer.rectangle(*box.astype(np.int), label=str(track_id))
+
+    def draw_detections(self, detections):
+        self.viewer.thickness = 2
+        self.viewer.color = 0, 0, 255
+        for i, detection in enumerate(detections):
+            self.viewer.rectangle(*detection.tlwh)
+
+    def draw_trackers(self, tracks):
+        self.viewer.thickness = 2
+        for track in tracks:
+            if not track.is_confirmed() or track.time_since_update > 0:
+                continue
+            self.viewer.color = create_unique_color_uchar(track.track_id)
+            self.viewer.rectangle(
+                *track.to_tlwh().astype(np.int), label=str(track.track_id))
+            # self.viewer.gaussian(track.mean[:2], track.covariance[:2, :2],
+            #                      label="%d" % track.track_id)
